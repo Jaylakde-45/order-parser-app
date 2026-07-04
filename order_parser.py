@@ -8,10 +8,9 @@ from firebase_admin import credentials, firestore
 import time
 import datetime
 from fpdf import FPDF
-import pywhatkit as kit
 
 # =============================================
-# 🧠 PARSE SINGLE ORDER (FIXED VERSION)
+# 🧠 PARSE SINGLE ORDER
 # =============================================
 
 def parse_single_order_line(line):
@@ -30,7 +29,7 @@ def parse_single_order_line(line):
         phone = phone_match.group(0)
         line = line.replace(phone, "").strip()
     
-    # --- STEP 2: Remove Date/Time (e.g., "12/06/24, 9:15 am -") ---
+    # --- STEP 2: Remove Date/Time ---
     date_time_pattern = r'^[\d/,\s:]+[AP]M?\s*-\s*'
     line = re.sub(date_time_pattern, '', line, flags=re.IGNORECASE)
     line = re.sub(r'\d{1,2}:\d{2}\s*[AP]M?\s*', '', line, flags=re.IGNORECASE)
@@ -68,7 +67,7 @@ def parse_single_order_line(line):
                 break
         order_text = re.sub(r'[₹]\s*\d+|Rs\.?\s*\d+|rupees\s*\d+|\d+\s*(?:rs|₹|rupees)', '', order_text, flags=re.IGNORECASE).strip()
     
-    # --- STEP 5: Extract Notes (urgent, deliver, etc.) ---
+    # --- STEP 5: Extract Notes ---
     notes = ""
     note_keywords = ['urgent', 'deliver', 'after', 'before', 'call', 'please', 'jaldi', 'cash', 'home', 'shop']
     lower_text = order_text.lower()
@@ -85,7 +84,7 @@ def parse_single_order_line(line):
                 order_text = re.sub(r'\s*' + keyword + r'\s*', '', order_text, flags=re.IGNORECASE).strip()
             break
     
-    # --- STEP 6: Clean up order_text ---
+    # --- STEP 6: Clean up ---
     order_text = re.sub(r',\s*,', ',', order_text)
     order_text = re.sub(r'\s*,\s*$', '', order_text)
     order_text = re.sub(r'\s+and\s+', ', ', order_text)
@@ -103,7 +102,7 @@ def parse_single_order_line(line):
     }
 
 # =============================================
-# 🚀 OAI DASHBOARD - COMPLETE FINAL VERSION
+# 🚀 OAI DASHBOARD
 # =============================================
 
 st.set_page_config(page_title="OAI Dashboard", page_icon="📊", layout="wide")
@@ -262,49 +261,6 @@ def generate_pdf_report(df, shop_name="My Shop"):
     return pdf_bytes
 
 # =============================================
-# 📱 WHATSAPP SENDER
-# =============================================
-
-def send_whatsapp_report(phone_number, df, shop_name="My Shop"):
-    total_orders = len(df)
-    total_rev = pd.to_numeric(df['Total (₹)'], errors='coerce').sum()
-    
-    message = f"📊 *Weekly Report - {shop_name}*\n"
-    message += f"📅 {datetime.datetime.now().strftime('%d-%b-%Y')}\n"
-    message += f"━━━━━━━━━━━━━━━\n"
-    message += f"📦 Total Orders: {total_orders}\n"
-    message += f"💰 Total Revenue: ₹{total_rev}\n"
-    message += f"━━━━━━━━━━━━━━━\n"
-    message += f"*Top 5 Items:*\n"
-    
-    all_items = []
-    for items_str in df['Order Items']:
-        if items_str != "-" and not pd.isna(items_str):
-            for item in items_str.split(','):
-                clean_item = item.strip()
-                if clean_item:
-                    cleaned_name = re.sub(r'^[\d\.]+\s*(kg|g|litre|l|ml|packets|packet|pcs|piece|kgs)?\s*', '', clean_item, flags=re.IGNORECASE)
-                    cleaned_name = cleaned_name.strip()
-                    if cleaned_name:
-                        all_items.append(cleaned_name)
-    
-    if all_items:
-        item_counts = pd.Series(all_items).value_counts().head(5)
-        for item, count in item_counts.items():
-            message += f"   • {item}: {count} orders\n"
-    
-    message += f"━━━━━━━━━━━━━━━\n"
-    message += f"✅ Full report available in the app.\n"
-    message += f"💡 ₹2,000/month | 7 Days Free Trial"
-    
-    try:
-        kit.sendwhatmsg_instantly(phone_number, message, wait_time=15)
-        return True
-    except Exception as e:
-        st.error(f"Error: {e}")
-        return False
-
-# =============================================
 # 📱 STREAMLIT UI
 # =============================================
 
@@ -319,7 +275,7 @@ st.markdown("""
 tab1, tab2, tab3 = st.tabs(["📝 Add Order", "📋 Today's Orders", "📈 Weekly Report"])
 
 # =============================================
-# TAB 1: ADD ORDER (MANUAL + PASTE)
+# TAB 1: ADD ORDER
 # =============================================
 with tab1:
     st.markdown("### 📝 Record New Order")
@@ -469,35 +425,18 @@ with tab3:
         
         st.markdown("---")
         
-        # PDF & WhatsApp
-        st.markdown("#### 📤 Share Report")
-        
-        col_pdf, col_wa = st.columns(2)
-        
-        with col_pdf:
-            if st.button("📄 Download PDF Report", use_container_width=True):
-                with st.spinner("Generating PDF..."):
-                    pdf_bytes = generate_pdf_report(df, shop_name="Kankavli Store")
-                    st.download_button(
-                        label="📥 Click to Download PDF",
-                        data=pdf_bytes,
-                        file_name=f"weekly_report_{datetime.datetime.now().strftime('%Y%m%d')}.pdf",
-                        mime="application/pdf",
-                        use_container_width=True
-                    )
-        
-        with col_wa:
-            phone_input = st.text_input("📱 WhatsApp Number (with +91)", placeholder="+919876543210")
-            if st.button("📱 Send Report to WhatsApp", use_container_width=True):
-                if phone_input:
-                    with st.spinner("Opening WhatsApp Web..."):
-                        st.info("⚠️ Please ensure WhatsApp Web is connected on your phone.")
-                        if send_whatsapp_report(phone_input, df):
-                            st.success("✅ Report sent!")
-                        else:
-                            st.error("❌ Failed. Check number or WhatsApp Web.")
-                else:
-                    st.warning("Enter a phone number.")
+        # PDF Download (Only)
+        st.markdown("#### 📤 Download Report")
+        if st.button("📄 Download PDF Report", use_container_width=True):
+            with st.spinner("Generating PDF..."):
+                pdf_bytes = generate_pdf_report(df, shop_name="Kankavli Store")
+                st.download_button(
+                    label="📥 Click to Download PDF",
+                    data=pdf_bytes,
+                    file_name=f"weekly_report_{datetime.datetime.now().strftime('%Y%m%d')}.pdf",
+                    mime="application/pdf",
+                    use_container_width=True
+                )
         
         st.download_button(
             label="📥 Download Full Report (CSV)",
