@@ -1,3 +1,7 @@
 streamlit
 pandas
+matplotlib
+firebase-admin
 openpyxl
+fpdf
+pywhatkit
