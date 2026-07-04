@@ -4,4 +4,3 @@ matplotlib
 firebase-admin
 openpyxl
 fpdf
-pywhatkit
